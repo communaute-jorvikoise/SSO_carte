@@ -1,6 +1,7 @@
 (function () {
-  const VERSION = "0.1.1";
+  const VERSION = "0.1.2";
   const MAX_COORD = 408;
+  const MAX_SIZE_PX = 1192;
   const BG_COLOR = "#645F58";
   const LEAFLET_CSS = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
   const LEAFLET_JS = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
@@ -46,7 +47,7 @@
     document.head.appendChild(script);
   }
 
-  function clampCoord(val) {
+  function toIntCoord(val) {
     return Math.max(0, Math.min(MAX_COORD, Math.round(val)));
   }
 
@@ -62,37 +63,37 @@
     const imageUrl =
       container.dataset.imageUrl || `${baseUrl}carte_jorvik_vierge.png?v=${VERSION}`;
 
-    // Cadre carré sans coins arrondis et sans espaces vides latéraux
-    container.style.position = "relative";
-    container.style.overflow = "hidden";
-    container.style.aspectRatio = "1 / 1";
-    container.style.width = container.style.width || "100%";
-    container.style.maxWidth = container.style.maxWidth || "720px";
-    container.style.height = "auto";
-    container.style.borderRadius = "0px";
-    container.style.backgroundColor = BG_COLOR;
+    // Taille carrée responsive : max 1192px, s'adapte à l'espace disponible / mobile
+    container.style.setProperty("position", "relative", "important");
+    container.style.setProperty("overflow", "hidden", "important");
+    container.style.setProperty("width", "100%", "important");
+    container.style.setProperty("max-width", `${MAX_SIZE_PX}px`, "important");
+    container.style.setProperty("aspect-ratio", "1 / 1", "important");
+    container.style.setProperty("height", "auto", "important");
+    container.style.setProperty("border-radius", "0px", "important");
+    container.style.setProperty("background-color", BG_COLOR, "important");
 
     const mapDiv = document.createElement("div");
-    mapDiv.style.width = "100%";
-    mapDiv.style.height = "100%";
-    mapDiv.style.borderRadius = "0px";
-    mapDiv.style.backgroundColor = BG_COLOR;
+    mapDiv.style.setProperty("width", "100%", "important");
+    mapDiv.style.setProperty("height", "100%", "important");
+    mapDiv.style.setProperty("border-radius", "0px", "important");
+    mapDiv.style.setProperty("background-color", BG_COLOR, "important");
     container.appendChild(mapDiv);
 
-    // Affichage des coordonnées entières en bas à gauche, sans coins arrondis
+    // Affichage des coordonnées entières uniquement, sans coins arrondis
     const hud = document.createElement("div");
     hud.textContent = "X: — , Y: —";
-    hud.style.position = "absolute";
-    hud.style.left = "10px";
-    hud.style.bottom = "10px";
-    hud.style.zIndex = "500";
-    hud.style.padding = "4px 10px";
-    hud.style.borderRadius = "0px";
-    hud.style.backgroundColor = "rgba(100, 95, 88, 0.92)";
-    hud.style.color = "#ffffff";
-    hud.style.fontFamily = "monospace";
-    hud.style.fontSize = "13px";
-    hud.style.pointerEvents = "none";
+    hud.style.setProperty("position", "absolute", "important");
+    hud.style.setProperty("left", "10px", "important");
+    hud.style.setProperty("bottom", "10px", "important");
+    hud.style.setProperty("z-index", "500", "important");
+    hud.style.setProperty("padding", "4px 10px", "important");
+    hud.style.setProperty("border-radius", "0px", "important");
+    hud.style.setProperty("background-color", "rgba(100, 95, 88, 0.92)", "important");
+    hud.style.setProperty("color", "#ffffff", "important");
+    hud.style.setProperty("font-family", "monospace", "important");
+    hud.style.setProperty("font-size", "13px", "important");
+    hud.style.setProperty("pointer-events", "none", "important");
     container.appendChild(hud);
 
     const JorvikCRS = L.Util.extend({}, L.CRS.Simple, {
@@ -106,9 +107,10 @@
 
     const map = L.map(mapDiv, {
       crs: JorvikCRS,
-      minZoom: -2,
-      maxZoom: 3,
-      zoomSnap: 0.25,
+      minZoom: -3,
+      maxZoom: 4,
+      zoomSnap: 0,
+      zoomDelta: 0.5,
       maxBounds: bounds,
       maxBoundsViscosity: 1.0,
       attributionControl: false
@@ -116,26 +118,37 @@
 
     L.imageOverlay(imageUrl, bounds).addTo(map);
 
-    function fitSquareMap() {
-      map.invalidateSize();
-      const minZoom = map.getBoundsZoom(bounds, true);
-      map.setMinZoom(minZoom);
-      map.fitBounds(bounds, { padding: [0, 0], animate: false });
+    function syncSquareSize() {
+      const rect = container.getBoundingClientRect();
+      const availableWidth = Math.min(MAX_SIZE_PX, Math.max(200, rect.width || MAX_SIZE_PX));
+      const sizePx = Math.round(availableWidth);
+
+      container.style.setProperty("width", `${sizePx}px`, "important");
+      container.style.setProperty("height", `${sizePx}px`, "important");
+      mapDiv.style.setProperty("width", `${sizePx}px`, "important");
+      mapDiv.style.setProperty("height", `${sizePx}px`, "important");
+
+      map.invalidateSize({ animate: false });
+
+      // Zoom exact pour que [0..408] remplisse exactement sizePx x sizePx
+      const exactZoom = Math.log2(sizePx / MAX_COORD);
+      map.setMinZoom(exactZoom);
+      map.setView([MAX_COORD / 2, MAX_COORD / 2], exactZoom, { animate: false });
     }
 
-    fitSquareMap();
-    setTimeout(fitSquareMap, 150);
-    window.addEventListener("resize", fitSquareMap);
+    syncSquareSize();
+    setTimeout(syncSquareSize, 150);
+    window.addEventListener("resize", syncSquareSize);
 
     map.on("mousemove", (e) => {
-      const x = clampCoord(e.latlng.lng);
-      const y = clampCoord(e.latlng.lat);
+      const x = toIntCoord(e.latlng.lng);
+      const y = toIntCoord(e.latlng.lat);
       hud.textContent = `X: ${x} , Y: ${y}`;
     });
 
     map.on("click", (e) => {
-      const x = clampCoord(e.latlng.lng);
-      const y = clampCoord(e.latlng.lat);
+      const x = toIntCoord(e.latlng.lng);
+      const y = toIntCoord(e.latlng.lat);
       console.log(
         `[Jorvik Carte] Filtres actifs: ${rawFilters.join(", ")} -> { "x": ${x}, "y": ${y} }`
       );
